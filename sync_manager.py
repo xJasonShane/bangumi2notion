@@ -1,16 +1,39 @@
 import logging
 from datetime import datetime
+from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class SyncError(Exception):
     """同步过程错误"""
-    pass
+    def __init__(self, message: str, original_exception: Optional[Exception] = None):
+        super().__init__(message)
+        self.original_exception = original_exception
+    
+    def __str__(self) -> str:
+        if self.original_exception:
+            return f"{self.args[0]}: {self.original_exception}"
+        return self.args[0]
 
 
 class SyncManager:
     """同步管理器"""
+    
+    # 状态映射常量
+    WATCHING_STATUS_MAP = {
+        "wish": "想看",
+        "watching": "在看",
+        "watched": "看过",
+        "on_hold": "搁置",
+        "dropped": "抛弃"
+    }
+    
+    AIR_STATUS_MAP = {
+        "watching": "连载中",
+        "finished": "已完结",
+        "not_aired": "未播出"
+    }
     
     def __init__(self, bangumi_client, notion_client, config):
         """初始化同步管理器
@@ -23,8 +46,11 @@ class SyncManager:
         self.bangumi_client = bangumi_client
         self.notion_client = notion_client
         self.config = config
+        
+        logger.info("同步管理器初始化成功")
+        logger.debug(f"同步配置: {config}")
     
-    def sync(self, dry_run=False):
+    def sync(self, dry_run: bool = False) -> Dict[str, int]:
         """执行同步流程
         
         Args:
@@ -62,9 +88,9 @@ class SyncManager:
             }
         except Exception as e:
             logger.error(f"同步过程中发生错误: {e}")
-            raise SyncError(f"同步过程中发生错误: {e}") from e
+            raise SyncError(f"同步过程中发生错误", e) from e
     
-    def get_bangumi_data(self):
+    def get_bangumi_data(self) -> Dict[int, Dict[str, Any]]:
         """获取Bangumi数据
         
         Returns:
@@ -89,7 +115,7 @@ class SyncManager:
         logger.info(f"成功解析 {len(bangumi_data)} 条Bangumi追番记录，过滤条件: {self.config.sync_status}")
         return bangumi_data
     
-    def get_notion_data(self):
+    def get_notion_data(self) -> Dict[int, Dict[str, Any]]:
         """获取Notion数据
         
         Returns:
@@ -97,7 +123,9 @@ class SyncManager:
         """
         return self.notion_client.get_existing_items()
     
-    def compare_data(self, bangumi_data, notion_data):
+    def compare_data(self, 
+                    bangumi_data: Dict[int, Dict[str, Any]], 
+                    notion_data: Dict[int, Dict[str, Any]]) -> Dict[str, List[Any]]:
         """对比数据，生成操作列表
         
         Args:
@@ -149,7 +177,7 @@ class SyncManager:
         logger.info(f"数据对比完成: 需要添加 {len(operations['add'])} 条记录，更新 {len(operations['update'])} 条记录，删除 {len(operations['delete'])} 条记录")
         return operations
     
-    def _need_update(self, bangumi_item, notion_item):
+    def _need_update(self, bangumi_item: Dict[str, Any], notion_item: Dict[str, Any]) -> bool:
         """判断记录是否需要更新
         
         Args:
@@ -165,48 +193,50 @@ class SyncManager:
         # 对比标题
         notion_title = notion_props.get("标题", {}).get("title", [{}])[0].get("text", {}).get("content", "")
         if bangumi_item.get("title_cn") != notion_title and bangumi_item.get("title") != notion_title:
+            logger.debug(f"标题变更: Bangumi='{bangumi_item.get('title_cn') or bangumi_item.get('title')}', Notion='{notion_title}'")
             return True
         
         # 对比评分
         notion_score = notion_props.get("评分", {}).get("number", 0)
         if bangumi_item.get("score") != notion_score:
+            logger.debug(f"评分变更: Bangumi={bangumi_item.get('score')}, Notion={notion_score}")
             return True
         
         # 对比观看状态
-        status_map = {
-            "wish": "想看",
-            "watching": "在看",
-            "watched": "看过",
-            "on_hold": "搁置",
-            "dropped": "抛弃"
-        }
         notion_status = notion_props.get("观看状态", {}).get("select", {}).get("name", "")
-        if status_map.get(bangumi_item.get("status")) != notion_status:
+        mapped_status = self.WATCHING_STATUS_MAP.get(bangumi_item.get("status"), "未知")
+        if mapped_status != notion_status:
+            logger.debug(f"观看状态变更: Bangumi='{mapped_status}', Notion='{notion_status}'")
             return True
         
         # 对比播出状态
-        air_status_map = {
-            "watching": "连载中",
-            "finished": "已完结",
-            "not_aired": "未播出"
-        }
         notion_air_status = notion_props.get("播出状态", {}).get("select", {}).get("name", "")
-        if air_status_map.get(bangumi_item.get("air_status")) != notion_air_status:
+        mapped_air_status = self.AIR_STATUS_MAP.get(bangumi_item.get("air_status"), "未知")
+        if mapped_air_status != notion_air_status:
+            logger.debug(f"播出状态变更: Bangumi='{mapped_air_status}', Notion='{notion_air_status}'")
             return True
         
         # 对比已观看集数
         notion_ep_status = notion_props.get("已观看集数", {}).get("number", 0)
         if bangumi_item.get("ep_status") != notion_ep_status:
+            logger.debug(f"已观看集数变更: Bangumi={bangumi_item.get('ep_status')}, Notion={notion_ep_status}")
             return True
         
         # 对比总集数
         notion_total_episodes = notion_props.get("总集数", {}).get("number", 0)
         if bangumi_item.get("total_episodes") != notion_total_episodes:
+            logger.debug(f"总集数变更: Bangumi={bangumi_item.get('total_episodes')}, Notion={notion_total_episodes}")
+            return True
+        
+        # 对比封面
+        notion_cover = notion_item.get("cover", {}).get("external", {}).get("url", "")
+        if bangumi_item.get("cover") != notion_cover:
+            logger.debug(f"封面变更: Bangumi='{bangumi_item.get('cover')}', Notion='{notion_cover}'")
             return True
         
         return False
     
-    def execute_sync(self, operations):
+    def execute_sync(self, operations: Dict[str, List[Any]]) -> None:
         """执行同步操作
         
         Args:
@@ -245,7 +275,7 @@ class SyncManager:
         
         logger.info(f"同步操作完成，共执行 {total_operations} 项任务")
     
-    def map_bangumi_to_notion(self, bangumi_item):
+    def map_bangumi_to_notion(self, bangumi_item: Dict[str, Any]) -> Dict[str, Any]:
         """将Bangumi数据映射为Notion格式
         
         Args:
@@ -254,21 +284,6 @@ class SyncManager:
         Returns:
             Notion页面数据
         """
-        # 状态映射
-        status_map = {
-            "wish": "想看",
-            "watching": "在看",
-            "watched": "看过",
-            "on_hold": "搁置",
-            "dropped": "抛弃"
-        }
-        
-        air_status_map = {
-            "watching": "连载中",
-            "finished": "已完结",
-            "not_aired": "未播出"
-        }
-        
         # 使用中文标题，如果没有则使用日文标题
         title = bangumi_item.get("title_cn") or bangumi_item.get("title")
         
@@ -294,12 +309,12 @@ class SyncManager:
                 },
                 "观看状态": {
                     "select": {
-                        "name": status_map.get(bangumi_item.get("status"), "未知")
+                        "name": self.WATCHING_STATUS_MAP.get(bangumi_item.get("status"), "未知")
                     }
                 },
                 "播出状态": {
                     "select": {
-                        "name": air_status_map.get(bangumi_item.get("air_status"), "未知")
+                        "name": self.AIR_STATUS_MAP.get(bangumi_item.get("air_status"), "未知")
                     }
                 },
                 "已观看集数": {
@@ -337,7 +352,7 @@ class SyncManager:
         
         return page_data
     
-    def _log_operations(self, operations):
+    def _log_operations(self, operations: Dict[str, List[Any]]) -> None:
         """记录操作日志
         
         Args:

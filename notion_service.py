@@ -1,17 +1,18 @@
 from notion_client import Client
 import logging
 import re
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
 
 class NotionAPIError(Exception):
     """Notion API请求错误"""
-    def __init__(self, message, original_exception=None):
+    def __init__(self, message: str, original_exception: Optional[Exception] = None):
         super().__init__(message)
         self.original_exception = original_exception
     
-    def __str__(self):
+    def __str__(self) -> str:
         if self.original_exception:
             return f"{self.args[0]}: {self.original_exception}"
         return self.args[0]
@@ -20,7 +21,7 @@ class NotionAPIError(Exception):
 class NotionService:
     """Notion API服务"""
     
-    def __init__(self, token, database_id):
+    def __init__(self, token: str, database_id: str):
         """初始化客户端
         
         Args:
@@ -29,9 +30,15 @@ class NotionService:
         """
         self.token = token
         self.database_id = database_id
-        self.client = Client(auth=token)
+        
+        try:
+            self.client = Client(auth=token)
+            logger.info(f"Notion客户端初始化成功")
+        except Exception as e:
+            logger.error(f"Notion客户端初始化失败: {e}")
+            raise NotionAPIError(f"Notion客户端初始化失败", e) from e
     
-    def get_database(self):
+    def get_database(self) -> Dict[str, Any]:
         """获取数据库信息
         
         Returns:
@@ -44,7 +51,7 @@ class NotionService:
             logger.error(f"获取数据库信息失败: {e}")
             raise NotionAPIError(f"获取Notion数据库信息失败: {self.database_id}", e) from e
     
-    def query_database(self, filter=None):
+    def query_database(self, filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """查询数据库内容
         
         Args:
@@ -62,7 +69,10 @@ class NotionService:
             pages = response.get("results", [])
             
             # 处理分页
+            page = 0
             while response.get("has_more"):
+                page += 1
+                logger.debug(f"查询第 {page} 页数据")
                 response = self.client.databases.query(
                     database_id=self.database_id,
                     filter=filter,
@@ -70,12 +80,13 @@ class NotionService:
                 )
                 pages.extend(response.get("results", []))
             
+            logger.info(f"成功查询到 {len(pages)} 条记录")
             return pages
         except Exception as e:
             logger.error(f"查询数据库失败: {e}")
             raise NotionAPIError(f"查询Notion数据库失败: {self.database_id}", e) from e
     
-    def create_page(self, page_data):
+    def create_page(self, page_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建新页面
         
         Args:
@@ -92,7 +103,7 @@ class NotionService:
             logger.error(f"创建页面失败: {e}")
             raise NotionAPIError(f"创建Notion页面失败", e) from e
     
-    def update_page(self, page_id, page_data):
+    def update_page(self, page_id: str, page_data: Dict[str, Any]) -> Dict[str, Any]:
         """更新页面
         
         Args:
@@ -109,7 +120,7 @@ class NotionService:
             logger.error(f"更新页面失败: {e}")
             raise NotionAPIError(f"更新Notion页面失败: {page_id}", e) from e
     
-    def get_existing_items(self):
+    def get_existing_items(self) -> Dict[int, Dict[str, Any]]:
         """获取现有番剧记录
         
         Returns:
@@ -132,7 +143,7 @@ class NotionService:
         logger.info(f"获取到 {len(existing_items)} 条现有番剧记录")
         return existing_items
     
-    def _extract_subject_id(self, bangumi_url):
+    def _extract_subject_id(self, bangumi_url: str) -> Optional[int]:
         """从Bangumi链接中提取subject_id
         
         Args:
@@ -143,5 +154,8 @@ class NotionService:
         """
         match = re.search(r"subject/(\d+)", bangumi_url)
         if match:
-            return int(match.group(1))
+            try:
+                return int(match.group(1))
+            except ValueError:
+                logger.warning(f"无效的subject_id格式: {match.group(1)}")
         return None

@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+from typing import Dict, Any
 
 from config import Config, ConfigError
 from bangumi_client import BangumiClient, BangumiAPIError
@@ -8,37 +9,51 @@ from notion_service import NotionService, NotionAPIError
 from sync_manager import SyncManager, SyncError
 
 
-def setup_logging(log_level):
+def setup_logging(log_level: str) -> None:
     """配置日志
     
     Args:
         log_level: 日志级别
     """
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
+    # 创建日志格式化器
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # 创建控制台处理器
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    
+    # 配置根日志记录器
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level.upper()))
+    root_logger.addHandler(console_handler)
+    
+    # 减少第三方库的日志级别
+    for lib in ['requests', 'urllib3', 'notion_client']:
+        logging.getLogger(lib).setLevel(logging.WARNING)
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """解析命令行参数
     
     Returns:
         解析后的参数
     """
-    parser = argparse.ArgumentParser(description='将Bangumi追番记录同步到Notion数据库')
-    parser.add_argument('--log-level', type=str, default='INFO', 
-                      choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-                      help='日志级别')
+    parser = argparse.ArgumentParser(
+        description='将Bangumi网站的追番记录自动同步到Notion数据库',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
     parser.add_argument('--dry-run', action='store_true', 
                       help='模拟运行，不实际修改Notion数据库')
+    
+    parser.add_argument('--log-level', type=str, default='INFO', 
+                      choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                      help='设置日志级别')
+    
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     """主函数"""
     # 解析命令行参数
     args = parse_arguments()
@@ -48,6 +63,7 @@ def main():
     logger = logging.getLogger(__name__)
     
     logger.info("启动bangumi2notion同步工具")
+    logger.debug(f"命令行参数: {args}")
     
     try:
         # 加载配置
@@ -65,12 +81,13 @@ def main():
         result = sync_manager.sync(dry_run=args.dry_run)
         
         # 输出同步结果
-        logger.info(f"同步结果统计:")
-        logger.info(f"  Bangumi追番总数: {result['total_bangumi_items']}")
-        logger.info(f"  Notion现有记录: {result['total_notion_items']}")
-        logger.info(f"  新增记录数: {result['add_count']}")
-        logger.info(f"  更新记录数: {result['update_count']}")
-        logger.info(f"  删除记录数: {result['delete_count']}")
+        logger.info("\n=== 同步结果统计 ===")
+        logger.info(f"Bangumi追番总数: {result['total_bangumi_items']}")
+        logger.info(f"Notion现有记录: {result['total_notion_items']}")
+        logger.info(f"新增记录数: {result['add_count']}")
+        logger.info(f"更新记录数: {result['update_count']}")
+        logger.info(f"删除记录数: {result['delete_count']}")
+        logger.info("==================")
         
         logger.info("bangumi2notion同步工具执行完成")
         sys.exit(0)
