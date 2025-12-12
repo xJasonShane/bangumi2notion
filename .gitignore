@@ -1,0 +1,55 @@
+# 虚拟环境
+venv/
+env/
+.env/
+
+# Python编译文件
+*.pyc
+__pycache__/
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+logs/
+
+# IDE配置
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 测试覆盖率报告
+htmlcov/
+.coverage
+.coverage.*
+
+# 构建文件
+build/
+dist/
+*.egg-info/
+
+# 临时文件
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# 数据库文件
+*.db
+*.sqlite3
+
+# 调试文件
+.pytest_cache/
+.tox/
+
+# Trae
+.trae/
