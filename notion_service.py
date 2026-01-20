@@ -2,20 +2,9 @@ from notion_client import Client
 import logging
 import re
 from typing import Dict, List, Optional, Any
+from exceptions import NotionAPIError
 
 logger = logging.getLogger(__name__)
-
-
-class NotionAPIError(Exception):
-    """Notion API请求错误"""
-    def __init__(self, message: str, original_exception: Optional[Exception] = None):
-        super().__init__(message)
-        self.original_exception = original_exception
-    
-    def __str__(self) -> str:
-        if self.original_exception:
-            return f"{self.args[0]}: {self.original_exception}"
-        return self.args[0]
 
 
 class NotionService:
@@ -40,7 +29,7 @@ class NotionService:
     
     def get_database(self) -> Dict[str, Any]:
         """获取数据库信息
-        
+
         Returns:
             数据库信息
         """
@@ -53,10 +42,10 @@ class NotionService:
     
     def query_database(self, filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """查询数据库内容
-        
+
         Args:
             filter: 查询过滤器
-            
+
         Returns:
             数据库中的页面列表
         """
@@ -88,10 +77,10 @@ class NotionService:
     
     def create_page(self, page_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建新页面
-        
+
         Args:
             page_data: 页面数据
-            
+
         Returns:
             创建的页面信息
         """
@@ -105,11 +94,11 @@ class NotionService:
     
     def update_page(self, page_id: str, page_data: Dict[str, Any]) -> Dict[str, Any]:
         """更新页面
-        
+
         Args:
             page_id: 页面ID
             page_data: 页面数据
-            
+
         Returns:
             更新后的页面信息
         """
@@ -122,7 +111,7 @@ class NotionService:
     
     def get_existing_items(self) -> Dict[int, Dict[str, Any]]:
         """获取现有番剧记录
-        
+
         Returns:
             现有番剧记录字典，key为subject_id，value为页面信息
         """

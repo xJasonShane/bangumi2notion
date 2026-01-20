@@ -2,80 +2,47 @@ import requests
 import time
 import logging
 from typing import Dict, List, Optional, Any
+from exceptions import BangumiAPIError
+from constants import BangumiConstants
 
 logger = logging.getLogger(__name__)
 
 
-class BangumiAPIError(Exception):
-    """Bangumi API请求错误"""
-    def __init__(self, message: str, original_exception: Optional[Exception] = None):
-        super().__init__(message)
-        self.original_exception = original_exception
-    
-    def __str__(self) -> str:
-        if self.original_exception:
-            return f"{self.args[0]}: {self.original_exception}"
-        return self.args[0]
-
-
 class BangumiClient:
     """Bangumi API客户端"""
-    
-    # API配置常量
-    BASE_URL = "https://api.bgm.tv/v0"
-    DEFAULT_TIMEOUT = 10
-    DEFAULT_RETRY_COUNT = 3
-    DEFAULT_RETRY_DELAY = 1
-    USER_AGENT = "bangumi2notion/1.0.0"
-    
-    # 状态映射常量
-    WATCHING_STATUS_MAP = {
-        1: "wish",      # 想看
-        2: "watching",   # 在看
-        3: "watched",    # 看过
-        4: "on_hold",    # 搁置
-        5: "dropped"     # 抛弃
-    }
-    
-    AIR_STATUS_MAP = {
-        1: "watching",   # 连载中
-        2: "finished",   # 已完结
-        3: "not_aired"   # 未播出
-    }
-    
-    def __init__(self, 
-                 timeout: int = DEFAULT_TIMEOUT, 
-                 retry_count: int = DEFAULT_RETRY_COUNT, 
-                 retry_delay: int = DEFAULT_RETRY_DELAY):
+
+    def __init__(self,
+                 timeout: int = BangumiConstants.DEFAULT_TIMEOUT,
+                 retry_count: int = BangumiConstants.DEFAULT_RETRY_COUNT,
+                 retry_delay: int = BangumiConstants.DEFAULT_RETRY_DELAY):
         """初始化客户端
-        
+
         Args:
             timeout: 请求超时时间（秒）
             retry_count: 请求失败重试次数
             retry_delay: 初始重试延迟（秒）
         """
-        self.base_url = self.BASE_URL
+        self.base_url = BangumiConstants.BASE_URL
         self.timeout = timeout
         self.retry_count = retry_count
         self.retry_delay = retry_delay
-        
-        # 初始化请求会话
+
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": self.USER_AGENT,
+            "User-Agent": BangumiConstants.USER_AGENT,
             "Accept": "application/json"
         })
     
     def _request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """发送API请求
-        
+
         Args:
             endpoint: API端点
             params: 请求参数
-            
+
         Returns:
             响应数据
-            
+
         Raises:
             BangumiAPIError: API请求失败
         """
@@ -96,14 +63,14 @@ class BangumiClient:
     
     def _retry_request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """带重试的请求
-        
+
         Args:
             endpoint: API端点
             params: 请求参数
-            
+
         Returns:
             响应数据
-            
+
         Raises:
             BangumiAPIError: 多次重试后请求仍然失败
         """
@@ -123,19 +90,19 @@ class BangumiClient:
     
     def get_user_collections(self, username: str) -> List[Dict[str, Any]]:
         """获取用户追番记录
-        
+
         Args:
             username: Bangumi用户名
-            
+
         Returns:
             用户追番记录列表
         """
         logger.info(f"开始获取 {username} 的Bangumi追番记录")
-        
+
         endpoint = f"/users/{username}/collections"
         params = {
-            "type": 1,  # 1表示动画
-            "limit": 50,  # 每次请求返回50条
+            "type": BangumiConstants.ANIME_TYPE,
+            "limit": BangumiConstants.DEFAULT_LIMIT,
             "offset": 0
         }
         
@@ -181,33 +148,29 @@ class BangumiClient:
     
     def parse_collection_data(self, collection: Dict[str, Any]) -> Dict[str, Any]:
         """解析收藏数据
-        
+
         Args:
             collection: 原始收藏数据
-            
+
         Returns:
             解析后的收藏数据
         """
         subject = collection.get("subject", {})
         collection_info = collection.get("collection", {})
-        
-        # 获取观看状态
+
         watch_status = collection_info.get("status")
-        status = self.WATCHING_STATUS_MAP.get(watch_status)
-        
-        # 获取播出状态
+        status = BangumiConstants.WATCHING_STATUS_MAP.get(watch_status)
+
         air_status = subject.get("air_status")
-        air_status_text = self.AIR_STATUS_MAP.get(air_status)
-        
-        # 获取封面图片
+        air_status_text = BangumiConstants.AIR_STATUS_MAP.get(air_status)
+
         cover = subject.get("images", {}).get("large")
         if cover and cover.startswith("//"):
             cover = f"https:{cover}"
-        
-        # 构建Bangumi详情页URL
+
         subject_id = subject.get("id")
         bangumi_url = f"https://bangumi.tv/subject/{subject_id}" if subject_id else ""
-        
+
         return {
             "subject_id": subject_id,
             "title": subject.get("name"),
